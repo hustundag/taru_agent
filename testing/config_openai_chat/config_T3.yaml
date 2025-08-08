@@ -1,0 +1,92 @@
+providers:
+  openai:
+    api_key: "env:OPENAI_API_KEY"
+    models:
+      - name: "gpt-4.1-mini"
+        model_settings:
+          temperature: 0.3
+          top_p: 0.1
+      - name: "o4-mini"
+        model_settings:
+          temperature: 0.3
+          top_p: 0.1
+  google:
+    api_key: "env:GEMINI_API_KEY"
+    models:
+      - name: "gemini-pro"
+        model_settings:
+          temperature: 0.3
+          top_p: 0.1
+  ollama:
+    base_url: "http://10.21.2.101:11434"
+
+local_tools:
+  - name: data_tools
+    path: custom_functions/data_tools
+  - name: package_tools
+    path: custom_functions/package_tools
+  - name: address_tools
+    path: custom_functions/address_tools
+
+agents:
+  - name: Jump_And_Tool_Handoff_Tester
+    provider: openai
+    model: gpt-4.1-mini
+    api: v1_chat_completions
+    instruction: "You are a test orchestrator. When given a high-level task, use the appropriate sequential or simple handoff tool. For example, to find shipping status, use the sequential tool. To find a customer ID, use the simple handoff tool."
+    history_mode: full
+    handoff_as_tool_list:
+      - action: handoff_sequential
+        target_agents: ["shipment_finder_agent", "address_finder_agent"]
+        handoff_description: "Finds the current shipping status and address for a given order ID."
+      - action: handoff
+        target_agent: Customer_ID_Finder_Simple
+        handoff_description: "Finds the customer ID for a given customer name."
+    policies:
+      at_user_message:
+        - action_list:
+            - action: handoff
+              target_agent: Customer_ID_Finder_Simple
+              #handoff_instruction: "Find the customer ID for Alice Corp"
+            - action: execute_custom_function
+              target: custom_actions.T3_actions.verify_init_handoff
+#            - action: execute_custom_function
+#              target: custom_actions.T3_actions.nohit 
+      at_llm_final_response:
+        - action_list:
+            - action: execute_custom_function
+              target: custom_actions.T3_actions.verify_handoff_flow
+            - action: execute_custom_function
+              target: custom_actions.T3_actions.nohit 
+
+  - name: Customer_ID_Finder_Simple
+    provider: openai
+    model: gpt-4.1-mini
+    api: v1_chat_completions
+    instruction: "You will be given a customer name. Your job is to find the corresponding customer ID using the 'get_customer_id' tool. After calling the tool, return the result as a sentence, e.g., 'The ID for [Customer Name] is [Customer ID]'."
+    history_mode: full
+    resources:
+      local_tools:
+        - group_name: data_tools
+
+  - name: shipment_finder_agent
+    provider: openai
+    model: gpt-4.1-mini
+    api: v1_chat_completions
+    instruction: "You will be given an order number. Use the 'get_package_id' and 'get_shipping_status' tools to find the package ID and shipment status. Your ONLY output MUST be a JSON object with 'order_id', 'package_id', 'status'. Do NOT include any conversational text or explanation."
+    history_mode: full
+    resources:
+      local_tools:
+        - group_name: data_tools
+        - group_name: package_tools
+        - group_name: address_tools
+
+  - name: address_finder_agent
+    provider: openai
+    model: gpt-4.1-mini
+    api: v1_chat_completions
+    instruction: "You will be given a JSON object as input, which will contain 'order_id', 'package_id', and 'status'. Use the 'package_id' from the JSON to call the 'get_shipping_address' tool. Your ONLY output MUST be the string: 'The order <ORDER_#> is <order_status> shipment address: <Shipment_address>'"
+    history_mode: full
+    resources:
+      local_tools:
+        - group_name: address_tools

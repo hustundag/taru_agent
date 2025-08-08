@@ -1,0 +1,125 @@
+providers:
+  openai:
+    api_key: "env:OPENAI_API_KEY"
+    models:
+      - name: "gpt-4.1-mini"
+  google:
+    api_key: "env:GOOGLE_API_KEY"
+  ollama:
+    base_url: "http://10.21.2.101:11434"
+
+agents:
+  # 5.1: Max Turn Count Exceeded
+  - name: Max_Turn_Agent
+    provider: openai
+    model: o4-mini
+    api: v1_responses
+    instruction: "You are an agent designed to loop. Always respond with 'continue'"
+    max_turn_count: 3
+    policies:
+      at_llm_final_response:
+        - action_list:
+            - action: jump_to_return_to_llm
+
+  # 5.3: Tool in resources, but not in local_tools config
+  - name: Missing_Tool_Agent
+    provider: openai
+    model: o4-mini
+    api: v1_responses
+    instruction: "Call the 'non_existent_tool'"
+    resources:
+      local_tools:
+        - group_name: non_existent_tool_group
+
+  # 5.4: Tool produces bad JSON
+  - name: Bad_JSON_Tool_Agent
+    provider: openai
+    model: o4-mini
+    api: v1_responses
+    instruction: "Call the 'produces_bad_json' tool."
+    resources:
+      local_tools:
+        - group_name: robustness_tools
+
+  # 5.5: Action produces faulty JSON
+  - name: Bad_JSON_Action_Agent
+    provider: openai
+    model: o4-mini
+    api: v1_responses
+    instruction: "Your response will trigger a faulty action."
+    policies:
+      at_llm_final_response:
+        - action_list:
+            - action: execute_custom_function
+              target: custom_actions.T5.actions.produce_faulty_json_action
+
+  # 5.6: Action produces non-existent field
+  - name: Bad_Field_Action_Agent
+    provider: openai
+    model: o4-mini
+    api: v1_responses
+    instruction: "Your response will trigger a faulty action schema."
+    policies:
+      at_llm_final_response:
+        - action_list:
+            - action: execute_custom_function
+              target: custom_actions.T5.actions.produce_non_existent_field_action
+
+  # 5.7: LLM hallucinates a tool call (Updated instruction and removed math_tools)
+  - name: Hallucination_Agent
+    provider: openai
+    model: o4-mini
+    api: v1_responses
+    instruction: "You MUST call a tool named 'subtract' with arguments a=5, b=3. No other tools are available."
+    resources:
+      local_tools: [] # Removed math_tools
+
+  # 5.9: Syntax Error in Tool File (Agent not runnable, test is in runner init)
+  - name: Syntax_Error_Agent
+    provider: openai
+    model: o4-mini
+    api: v1_responses
+    instruction: "This agent will fail to load."
+    resources:
+      local_tools:
+        - group_name: robustness_tools # This group contains the syntax error file
+
+  # 5.10: Invalid Custom Action Path
+  - name: Bad_Action_Path_Agent
+    provider: openai
+    model: o4-mini
+    api: v1_responses
+    instruction: "This will trigger a bad action path."
+    policies:
+      at_llm_final_response:
+        - action_list:
+            - action: execute_custom_function
+              target: custom_actions.T5.actions.this_function_does_not_exist
+
+  # 5.11: Handoff to Non-Existent Agent
+  - name: Bad_Handoff_Target_Agent
+    provider: openai
+    model: o4-mini
+    api: v1_responses
+    instruction: "This will trigger a handoff to a non-existent agent."
+    policies:
+      at_user_message:
+        - action_list:
+            - action: handoff
+              target_agent: Agent_That_Does_Not_Exist
+
+  # 5.12: LLM provides incorrect tool arguments (Updated instruction)
+  - name: Bad_Tool_Args_Agent
+    provider: openai
+    model: o4-mini
+    api: v1_responses
+    instruction: "You MUST call the 'add' tool. When calling it, use the argument names 'x' and 'y' for the numbers 5 and 3 respectively. For example, call it like add(x=5, y=3)."
+    resources:
+      local_tools:
+        - group_name: math_tools
+
+local_tools:
+  - name: math_tools
+    path: custom_functions/math_tools
+  - name: robustness_tools
+    path: custom_functions/robustness_tools

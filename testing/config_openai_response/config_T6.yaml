@@ -1,0 +1,28 @@
+providers:
+  openai:
+    api_key: "env:OPENAI_API_KEY"
+    models:
+      - name: "gpt-4.1-mini"
+  google:
+    api_key: "env:GOOGLE_API_KEY"
+  ollama:
+    base_url: "http://10.21.2.101:11434"
+
+mcp_servers:
+  - name: "FileManagerServer"
+    url: "http://localhost:8525/sse"
+
+agents:
+  - name: MCP_File_Agent
+    provider: openai
+    model: gpt-4.1-mini
+    api: v1_responses
+    instruction: "You are a file management assistant. When asked to list files, use the file_list tool."
+    history_mode: full
+    resources:
+      mcp_tools:
+        - server_name: "FileManagerServer"
+          filter:
+            deny:
+              - "file_write"
+              - "file_mkdir"

@@ -1,0 +1,40 @@
+providers:
+  openai:
+    api_key: "env:OPENAI_API_KEY"
+    models:
+      - name: "gpt-4.1-mini"
+        model_settings:
+          temperature: 0.3
+  google:
+    api_key: "env:GOOGLE_API_KEY"
+  ollama:
+    base_url: "http://10.21.2.101:11434"
+
+agents:
+  - name: Jump_Test_Agent
+    provider: openai
+    model: o4-mini
+    api: v1_responses
+    instruction: "You are a simple assistant. When asked to calculate something, use the 'add' tool. When asked about gas prices, use the 'check_gas_prices' tool. If the user says 'How are you today', you MUST respond with exactly: 'How are you today is echoed'"
+    history_mode: response_id
+    resources:
+      local_tools:
+        - group_name: math_tools
+        - group_name: gas_tools
+    policies:
+      at_function_call:
+        - tool_name: add_numbers
+          action_list:
+            - action: execute_custom_function
+              target: custom_actions.T4_actions.intercept_at_function_call
+      at_function_call_return:
+        - tool_name: check_gas_prices
+          action_list:
+            - action: execute_custom_function
+              target: custom_actions.T4_actions.intercept_at_function_call_return
+
+local_tools:
+  - name: math_tools
+    path: custom_functions/math_tools
+  - name: gas_tools
+    path: custom_functions/gas_tools

@@ -1,0 +1,19 @@
+{
+  "chunks": [
+    {
+      "warehouse_id": "WH-NORTH-1",
+      "product_id": "SKU-123",
+      "stock_level": 150
+    },
+    {
+      "warehouse_id": "WH-SOUTH-1",
+      "product_id": "SKU-123",
+      "stock_level": 200
+    },
+    {
+      "warehouse_id": "WH-EAST-1",
+      "product_id": "SKU-456",
+      "stock_level": 300
+    }
+  ]
+}

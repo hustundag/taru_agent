@@ -1,0 +1,26 @@
+{
+  "chunks": [
+    {
+      "type": "user_query",
+      "query": "analyze sales data"
+    },
+    {
+      "type": "sales_record",
+      "product_id": "SKU-123",
+      "region": "North",
+      "units_sold": 50
+    },
+    {
+      "type": "sales_record",
+      "product_id": "SKU-456",
+      "region": "South",
+      "units_sold": 75
+    },
+    {
+      "type": "sales_record",
+      "product_id": "SKU-123",
+      "region": "North",
+      "units_sold": 30
+    }
+  ]
+}

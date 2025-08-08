@@ -1,0 +1,24 @@
+{
+  "chunks": [
+    {
+      "log_id": "log-001",
+      "level": "ERROR",
+      "message": "Database connection failed."
+    },
+    {
+      "log_id": "log-002",
+      "level": "INFO",
+      "message": "User logged in successfully."
+    },
+    {
+      "log_id": "log-003",
+      "level": "ERROR",
+      "message": "Payment gateway timeout."
+    },
+    {
+      "log_id": "log-004",
+      "level": "WARNING",
+      "message": "Disk space is running low."
+    }
+  ]
+}

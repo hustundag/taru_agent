@@ -1,0 +1,8 @@
+PyYAML
+anyio
+mcp
+tiktoken
+ollama
+openai
+google-generativeai
+fastmcp

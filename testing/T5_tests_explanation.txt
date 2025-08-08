@@ -1,0 +1,190 @@
+  5.1: Max Turn Count Exceeded
+
+
+   * What it's testing: The framework's ability to detect and gracefully terminate an agent that enters an infinite loop or takes too many steps to complete a task.
+   * How it's supposed to work:
+       * Agent: Max_Turn_Agent
+       * Instruction: "You are an agent designed to loop. Always respond with 'continue'"
+       * Mechanism: The agent's max_turn_count is set to a very low number (e.g., 3). Its at_llm_final_response policy contains an action jump_to_return_to_llm. This creates a loop: LLM responds -> policy jumps
+         back to LLM input -> LLM responds again. This loop quickly exhausts the max_turn_count.
+   * Expected Agent Response: A string indicating that the max turn count was exceeded, e.g., "Max actions reached (3) before completing the request. Consider adjusting actions or increasing max_turn_count in the
+     configuration. Visited Actions: ['jump_to_return_to_llm', 'call_llm', 'process_llm_response', 'jump_to_return_to_llm', 'call_llm', 'process_llm_response', 'jump_to_return_to_llm']. Final Result: continue"
+     (The exact visited actions might vary slightly based on internal steps).
+   * Expected Logs:
+       * ERROR level log from PolicyManager stating "Max turn count of X exceeded."
+       * INFO level logs showing the state transitions and actions taken before termination.
+   * Why it's important: Prevents runaway agents and provides clear diagnostics when an agent gets stuck in a loop.
+
+  ---
+
+  5.2: Missing `local_tools` section in config
+
+
+   * What it's testing: The framework's resilience when the local_tools section is entirely absent from the configuration file.
+   * How it's supposed to work:
+       * Agent: Dummy_Agent (defined in config_broken.yaml)
+       * Mechanism: The robustness_caller.py dynamically creates config_broken.yaml which intentionally omits the local_tools top-level key. The TaruRunner initialization (specifically ToolManager.__init__)
+         should handle this gracefully by using the .get("local_tools", []) default.
+   * Expected Agent Response: The agent should run normally, as it doesn't attempt to use any tools. Its response will be based on its instruction (e.g., "Hello").
+   * Expected Logs: No errors related to missing local_tools. Potentially a DEBUG log from ToolManager indicating "Discovering local tools..." but finding none.
+   * Why it's important: Ensures the framework can start and operate even with minimal or incomplete configurations.
+
+  ---
+
+
+  5.3: Tool in `resources` but not in `local_tools` config
+
+
+   * What it's testing: The framework's resilience when an agent's resources section requests a local_tools group_name that is not defined in the top-level local_tools section of config_test5.yaml.
+   * How it's supposed to work (Actual Implementation):
+       * Agent: Missing_Tool_Agent
+       * Mechanism: The Missing_Tool_Agent's resources section includes group_name: non_existent_tool_group.
+       * During TaruRunner initialization, the ToolManager._discover_local_tools method processes the local_tools section of the config. Since non_existent_tool_group is not defined there, no tools are discovered
+         for that group.
+       * When ToolManager.get_tools_for_agent is called to build the ExecutionContext for Missing_Tool_Agent, it looks up non_existent_tool_group in its internal self.tools["local"] dictionary. Because it's not
+         found, self.tools["local"].get(grp, {}) returns an empty dictionary.
+       * Result: The Missing_Tool_Agent is built with an empty list of tools. The LLM is never presented with a tool named non_existent_tool because it's not registered.
+   * Expected Agent Response: The LLM, having no tools available to fulfill its instruction ("Call the 'non_existent_tool'"), simply generates a conversational response based on its general knowledge and the
+     prompt. The response "It seems you requested to start, but mentioned a non-existent tool earlier. How can I assist you today?" is a perfectly reasonable conversational fallback from an LLM that has no tools
+     to call.
+   * Expected Logs:
+       * No ERROR logs related to the tool not being found during invocation, because the LLM never attempts to invoke it.
+       * Logs will show the normal flow of the LLM generating a response.
+   * Why it's important: This test confirms that the ToolManager gracefully handles misconfigurations where a requested tool group is not defined. The framework does not crash, and the agent simply operates
+     without the unavailable tools. This is a robust and desirable behavior.
+
+  ---
+
+  5.4: Local tool produces bad JSON
+
+
+   * What it's testing: The framework's ability to handle malformed JSON output from a local tool.
+   * How it's supposed to work:
+       * Agent: Bad_JSON_Tool_Agent
+       * Mechanism: This agent is instructed to call the produces_bad_json tool (from custom_functions/robustness_tools/bad_json_tool.py). This tool explicitly returns a string that is syntactically incorrect
+         JSON. The PolicyManager._invoke_tool method attempts to json.loads() the tool's output if it's an MCP tool, but for local tools, it might just pass the string. The error will likely occur when the LLM
+         tries to process this malformed string as part of its context.
+   * Expected Agent Response: An error message indicating a problem with the tool's output or the LLM's processing of it. The exact message might depend on how the LLM handles malformed tool outputs.
+   * Expected Logs:
+       * ERROR level log from PolicyManager._invoke_tool if it attempts to parse the JSON and fails.
+       * Potentially ERROR logs from the LLM adapter if it receives invalid content.
+   * Why it's important: Ensures that faulty tool implementations don't crash the agent and that the error is propagated.
+
+  ---
+
+  5.5: Action produces faulty JSON
+
+
+   * What it's testing: The framework's handling of a custom action returning an ActionOutput where the payload is not valid JSON, but the framework attempts to log or process it as such.
+   * How it's supposed to work:
+       * Agent: Bad_JSON_Action_Agent
+       * Mechanism: The agent's at_llm_final_response policy calls custom_actions.robustness_test_actions.produce_faulty_json_action. This action returns an ActionOutput with a payload that is a string
+         representing malformed JSON. The CustomActionManager attempts to pprint.pformat the payload for logging, which might expose issues if it's not a simple string.
+   * Expected Agent Response: The agent should return the malformed JSON string as its final response, as the payload_replace is true.
+   * Expected Logs:
+       * DEBUG log from CustomActionManager indicating "Could not format custom action payload for logging" if pprint fails. The ActionOutput itself should still be returned.
+   * Why it's important: Ensures that custom actions returning malformed data don't crash the system, especially during logging or internal processing.
+
+  ---
+
+
+  5.6: Action produces non-existent field
+
+
+   * What it's testing: The framework's handling of a custom action returning an object that does not conform to the ActionOutput dataclass schema (e.g., missing expected attributes).
+   * How it's supposed to work:
+       * Agent: Bad_Field_Action_Agent
+       * Mechanism: The agent's at_llm_final_response policy calls custom_actions.robustness_test_actions.produce_non_existent_field_action. This action returns an instance of BadActionOutput, which is a custom
+         class that lacks some fields expected by ActionOutput (e.g., payload_replace). When CustomActionManager tries to access action_output.payload_replace or other fields, it should raise an AttributeError.
+   * Expected Agent Response: An error message indicating the failure of the custom action, as the CustomActionManager's try...except block should catch the AttributeError.
+   * Expected Logs:
+       * ERROR level log from CustomActionManager stating "Error invoking custom action..." with an AttributeError in the traceback.
+   * Why it's important: Ensures that custom actions returning improperly structured objects are caught and reported, preventing unexpected runtime errors.
+
+  ---
+
+  5.7: LLM hallucinates a tool call
+
+
+   * What it's testing: The framework's ability to handle an LLM attempting to call a tool that is not available in its ExecutionContext.
+   * How it's supposed to work:
+       * Agent: Hallucination_Agent
+       * Instruction: "You have one tool called 'add'. You MUST call a tool named 'subtract' with arguments a=5, b=3. Do not call any other tool."
+       * Mechanism: The LLM is explicitly instructed to call a non-existent tool (subtract). When PolicyManager._invoke_tool is called, it will search self.context.tools for 'subtract' and not find it, raising a
+         ValueError.
+   * Expected Agent Response: An error message indicating that the tool was not found, e.g., "Error: The language model call failed with error: Tool 'subtract' not in execution context."
+   * Expected Logs:
+       * ERROR level log from PolicyManager._invoke_tool stating "Tool 'subtract' not in execution context."
+       * ERROR level log from PolicyManager._call_llm indicating the LLM call failed due to the tool invocation error.
+   * Why it's important: Validates that the framework correctly handles LLM "hallucinations" of unavailable tools, preventing crashes and providing clear feedback.
+
+  ---
+
+  5.9: Syntax Error in Tool File
+
+
+   * What it's testing: The TaruRunner framework's ability to gracefully handle a Python SyntaxError within a local tool file during its initial startup and tool discovery phase.
+   * How it's supposed to work:
+       * Mechanism: The robustness_caller.py attempts to instantiate TaruRunner with config_test5.yaml. During this instantiation, TaruRunner's ToolManager._discover_local_tools method will encounter
+         custom_functions/robustness_tools/syntax_error_tool.py, which contains a deliberate SyntaxError. The TaruAgent.py code now has a try-except SyntaxError block around
+         module_spec.loader.exec_module(module).
+   * Expected Outcome (from `robustness_caller.py` perspective): The TaruRunner should successfully initialize without crashing the robustness_caller.py script. The robustness_caller.py will confirm that no
+     unexpected exception was raised during TaruRunner's instantiation, indicating that the SyntaxError was handled internally.
+   * Expected Logs (from `TaruAgent.py`):
+       * ERROR level log from TaruAgent (specifically ToolManager._discover_local_tools) stating "Syntax error in tool file..." with the specific error details and traceback.
+       * Other INFO logs indicating successful discovery of other tools.
+   * Why it's important: Ensures that a single malformed tool file does not crash the entire application during its startup, allowing the framework to initialize and operate, albeit with a missing tool. This
+     demonstrates graceful degradation and clear error reporting at the earliest possible stage.
+
+
+  ---
+
+  5.10: Invalid Custom Action Path
+
+
+   * What it's testing: The framework's handling of a policy pointing to a custom action function that does not exist (e.g., a typo in the function name).
+   * How it's supposed to work:
+       * Agent: Bad_Action_Path_Agent
+       * Mechanism: The agent's at_llm_final_response policy points to custom_actions.robustness_test_actions.this_function_does_not_exist. When CustomActionManager.invoke tries to getattr(module, func_name), it
+         will raise an AttributeError.
+   * Expected Agent Response: An error message indicating the failure of the custom action.
+   * Expected Logs:
+       * ERROR level log from CustomActionManager.invoke stating "Error invoking custom action..." with an AttributeError in the traceback.
+   * Why it's important: Ensures that misconfigured custom action paths are caught at runtime and reported, preventing crashes.
+
+  ---
+
+
+  5.11: Handoff to Non-Existent Agent
+
+
+   * What it's testing: The framework's ability to handle a policy-driven handoff to an agent name that is not defined in the agents list of the configuration.
+   * How it's supposed to work:
+       * Agent: Bad_Handoff_Target_Agent
+       * Mechanism: The agent's at_user_message policy attempts a handoff to target_agent: Agent_That_Does_Not_Exist. When PolicyManager._handle_handoff calls
+         self.managers["builder"].build(["Agent_That_Does_Not_Exist"]), the AgentBuilder will raise a KeyError because Agent_That_Does_Not_Exist is not in its self.agents dictionary. This KeyError should be
+         caught by the _invoke_tool's try...except block.
+   * Expected Agent Response: An error message indicating the handoff failed due to the target agent not being found.
+   * Expected Logs:
+       * ERROR level log from PolicyManager._invoke_tool (or potentially _handle_handoff) indicating the KeyError for the non-existent agent.
+   * Why it's important: Ensures that misconfigured handoff targets are caught and reported, preventing crashes during inter-agent communication.
+
+  ---
+
+
+  5.12: LLM provides incorrect tool arguments
+
+
+   * What it's testing: The framework's ability to handle an LLM providing arguments to a tool that do not match the tool's expected function signature (e.g., wrong parameter names).
+   * How it's supposed to work:
+       * Agent: Bad_Tool_Args_Agent
+       * Instruction: "You MUST call the 'add' tool with arguments named 'x' and 'y' to add 5 and 3." (The add tool expects a and b).
+       * Mechanism: The LLM will likely call add(x=5, y=3). When PolicyManager._invoke_tool calls tool.invoke(**tool_args), Python will raise a TypeError because add does not accept x and y as arguments. This
+         TypeError should be caught by the try...except block in _invoke_tool.
+   * Expected Agent Response: An error message indicating that the tool invocation failed due to incorrect arguments.
+   * Expected Logs:
+       * ERROR level log from PolicyManager._invoke_tool stating "Invoking tool 'add'" with a TypeError in the traceback.
+   * Why it's important: Validates that the framework gracefully handles mismatches between the LLM's tool call and the actual tool's signature, providing clear error messages.
+
+
+

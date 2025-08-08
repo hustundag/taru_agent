@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "TaruAgent"
+version = "0.1.0"
+description = "TaruAgent: multi-provider AI agent Framework (OpenAI, Gemini, Ollama, MCP)"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Halit Ustundag" }]
+license = { text = "Apache-2.0" }
+
+dependencies = [
+    "PyYAML>=6.0.2",
+    "tiktoken>=0.10.0",
+    "anyio>=4.0.0",
+    "openai>=1.99.1",
+    "mcp>=1.12.3",
+    "google-genai>=1.28.0",
+    "ollama>=0.5.2"
+]
+
+[tool.setuptools]
+packages = ["TaruAgent", "TaruAgent.adapters"]
+
+[tool.setuptools.package-data]
+TaruAgent = ["py.typed"]
+

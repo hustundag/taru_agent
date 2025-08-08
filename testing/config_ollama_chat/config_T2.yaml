@@ -1,0 +1,84 @@
+providers:
+  openai:
+    api_key: "env:OPENAI_API_KEY" # Ensure OPENAI_API_KEY is set in your environment
+    models:
+      - name: "gpt-4.1-mini"
+        model_settings:
+          temperature: 0.3
+      - name: "o4-mini"
+        model_settings:
+          temperature: 0.3
+  google:
+    api_key: "env:GOOGLE_API_KEY"
+  ollama:
+    - name: my_ollama_instance
+      base_url: http://10.21.2.101:11434
+
+agents:
+  - name: Handoff_Initiator_Agent
+    provider: my_ollama_instance
+    model: llama3.2:1b
+    api: ollama_openai_compatible
+    instruction: |
+      You are a helpful assistant. Your goal is to get data and provide answers in a predefined format. 
+      When the user requests information, you must adhere strictly to the following response formats:
+  
+      - For Sales Data: "The total sales for <SKU_NAME> is <TOTAL_SALES_NUMBER>"
+      - For Inventory Data: "The total inventory for <SKU_NAME> is <TOTAL_INVENTORY_NUMBER>"
+      - For System Log Analysis: "The total number of <LOG_TYPE> logs is <TOTAL_NUMBER_OF_LOGS>"
+  
+      You must return Sales Data, Inventory Data, and System Log Analysis only for the requested information. 
+      Do not return or include any data if it has not been explicitly requested.
+
+    history_mode: full
+    max_turn_count: 100 
+    resources:
+      local_tools:
+        - group_name: data_tools
+    policies:
+      at_function_call_return:
+        - tool_name: get_sales_data
+          action_list:
+            - action: handoff_feed_chunks
+              target_agent: Chunk_Processor_Agent
+              final_instruction: "You have now received all {total_chunks} parts of the data. Please calculate the total units sold for each product ID and provide a summary."
+        - tool_name: get_inventory_data
+          action_list:
+            - action: handoff_serial
+              target_agent: Inventory_Processor_Agent
+              handoff_instruction: "Analyze the inventory data and return  summary data by <SKU_NAME>"
+              interval_seconds: 1
+        - tool_name: get_log_data
+          action_list:
+            - action: handoff_parallel
+              target_agent: Log_Processor_Agent
+              handoff_instruction: "Analyze this log entry and return its severity level (e.g., ERROR, INFO, WARNING)."
+      at_llm_final_response:
+        - action_list:
+            - action: execute_custom_function
+              target: custom_actions.T2_actions.verify_data_analysis
+
+  - name: Chunk_Processor_Agent
+    provider: openai
+    model: gpt-4.1-mini
+    api: v1_chat_completions
+    instruction: "You are a data processing agent. You will receive data in chunks. Follow the protocol to request each chunk. Once you have all the data, perform the requested analysis and return only the raw result."
+    history_mode: full
+
+  - name: Inventory_Processor_Agent
+    provider: my_ollama_instance
+    model: llama3.2:1b
+    api: ollama_openai_compatible
+    instruction: "You are an inventory processing agent. You will receive inventory record. Your ONLY task is to extract the SKU and stock_level as total number of units for the given SKU  and return it as a raw JSON object, EXACTLY in the  format of : {\"sku\": \"<SKU_NAME>\", \"stock_level\": <total number of units>}. Do not include any other text, words, or formatting. Do not incllude any other information from the record"
+    history_mode: full
+
+  - name: Log_Processor_Agent
+    provider: my_ollama_instance
+    model: llama3.2:1b
+    api: ollama_openai_compatible
+    instruction: "You are a log analysis agent. You will receive a single log entry. Return only the log's 'level' value (e.g., ERROR, INFO)."
+    history_mode: full
+
+local_tools:
+  - name: data_tools
+    path: custom_functions/data_tools
