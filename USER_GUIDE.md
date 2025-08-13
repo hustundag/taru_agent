@@ -55,13 +55,16 @@ The quickest way to get started. The Docker image comes with the framework and a
 It also includes simple AI CLI app example to get you started quickly. 
 ```bash
 # Pull the latest Docker image
-docker pull hustundag/taruagent:latest
+docker pull hustunda/taruagent:latest
 
 # Run the container interactively
 docker run -dit  \
-  -e OPENAI_API_KEY="your_api_key" \
+  -e OPENAI_API_KEY="your api key" \
+  --name taru_agent_1 \
   -v /path/to/data:/apps/data \
-  hustundag/taruagent:latest
+  hustunda/taruagent:latest
+
+docker exec -it taru_agent_1 /bin/bash
 ```
 Note on Configuration: The pre-built image is minimal and does not include a text editor. The recommended way to use your own config.yaml is to mount it directly from your computer using the -v flag for config.yaml. This
   lets you edit the file locally. 
